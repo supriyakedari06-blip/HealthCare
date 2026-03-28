@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ayu Sutra - AI Explainer</title>
+
+<script src="https://unpkg.com/tesseract.js@4.0.2/dist/tesseract.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+
+<style>
+body { font-family: Arial; background:#f3f4f6; }
+.box { max-width:500px; margin:auto; margin-top:40px; background:white; padding:20px; border-radius:20px; box-shadow:0 10px 30px rgba(0,0,0,0.1);}
+button { width:100%; padding:14px; background:#2563eb; color:white; border:none; border-radius:12px; font-weight:bold; cursor:pointer;}
+</style>
+</head>
+
+<body>
+
+<div class="box">
+    <h2 style="text-align:center;">📄 Prescription Explainer</h2>
+
+    <input type="file" id="fileInput" accept="image/*" onchange="handleImage(event)">
+    <img id="imgDisplay" style="width:100%; margin-top:10px; display:none; border-radius:10px;">
+
+    <button onclick="runMedicalAnalysis()">Analyze Report</button>
+
+    <p id="statusMsg"></p>
+
+    <div id="resultBox" style="display:none; margin-top:20px;">
+        <p id="outputText"></p>
+
+        <div id="medicineDisplay" style="margin-top:20px; text-align:center;"></div>
+    </div>
+</div>
+
+<script>
+
+// 🔥 Firebase Config
+const firebaseConfig = {
+    apiKey: "YOUR_FIREBASE_KEY",
+    authDomain: "YOUR_DOMAIN",
+    projectId: "YOUR_PROJECT_ID"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+// 📸 Image Upload
+function handleImage(e) {
+    const file = e.target.files[0];
+    const img = document.getElementById('imgDisplay');
+
+    if (file) {
+        const reader = new FileReader();
+        reader.onload = (f) => {
+            img.src = f.target.result;
+            img.style.display = "block";
+        };
+        reader.readAsDataURL(file);
+    }
+}
+
+// 🤖 AI ANALYSIS (Improved)
+async function analyzeReport(text) {
+    try {
+        const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+            method: "POST",
+            headers: {
+                "Authorization": "Bearer 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",
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                model: "nvidia/nemotron-3-super-120b-a12b:free",
+                messages: [{
+                    role: "user",
+                    content: `
+Analyze this CBC report:
+
+${text}
+
+Find:
+- Low values
+- Disease
+- Suggest safe supplement
+
+Return format:
+Result: ...
+Condition: ...
+Medicine: ...
+Advice: ...
+`
+                }]
+            })
+        });
+
+        const data = await res.json();
+        return data.choices[0].message.content;
+
+    } catch {
+        return "Error analyzing report.";
+    }
+}
+
+// 🚀 MAIN FUNCTION
+async function runMedicalAnalysis() {
+    const img = document.getElementById('imgDisplay');
+    const status = document.getElementById('statusMsg');
+    const output = document.getElementById('outputText');
+    const resultBox = document.getElementById('resultBox');
+    const medDiv = document.getElementById('medicineDisplay');
+
+    if (!img.src) {
+        alert("Upload image first");
+        return;
+    }
+
+    status.innerText = "Reading image...";
+    
+    // OCR
+    const result = await Tesseract.recognize(img.src, 'eng');
+    const text = result.data.text;
+
+    status.innerText = "Analyzing report...";
+
+    // AI
+    const aiResponse = await analyzeReport(text);
+
+    output.innerText = aiResponse;
+    resultBox.style.display = "block";
+    status.innerText = "";
+
+    // Extract medicine
+    let medName = "multivitamin";
+    if (aiResponse.includes("Medicine:")) {
+        medName = aiResponse.split("Medicine:")[1].split("\n")[0].trim();
+    }
+
+    // 💊 Show Medicine Image
+    medDiv.innerHTML = `
+        <h3>💊 Suggested:</h3>
+        <p><b>${medName}</b></p>
+        <img src="https://source.unsplash.com/200x200/?${medName},medicine,tablet"
+        style="width:120px; border-radius:12px; margin-top:10px;">
+    `;
+
+    // 🔊 Voice
+    speak(aiResponse);
+
+    // 💾 Save
+    db.collection("reports").add({
+        text: text,
+        result: aiResponse,
+        medicine: medName,
+        time: new Date()
+    });
+}
+
+// 🔊 SPEAK
+function speak(text) {
+    speechSynthesis.cancel();
+    const msg = new SpeechSynthesisUtterance(text);
+    speechSynthesis.speak(msg);
+}
+
+</script>
+
+</body>
+</html>
